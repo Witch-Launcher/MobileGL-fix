@@ -14493,6 +14493,8 @@ void main() {
         allocatorInfo.device = m_device;
         allocatorInfo.pVulkanFunctions = &vulkanFunctions;
         allocatorInfo.vulkanApiVersion = VK_API_VERSION_1_0;
+        allocatorInfo.preferredLargeHeapBlockSize =
+            static_cast<VkDeviceSize>(MG_Config::Features.MagmaVmaBlockSizeMB) * 1024 * 1024;
 
         VK_VERIFY(vmaCreateAllocator(&allocatorInfo, &m_allocator), "vmaCreateAllocator");
     }

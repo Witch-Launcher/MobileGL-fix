@@ -144,6 +144,11 @@ namespace MobileGL::MG_Config {
         // frame otherwise keeps its burst of sets (rd12: ~15k, where steady frames use a few dozen)
         // for the life of the process. See UniformManager::TrimFrameDescriptorPools.
         Uint32 MagmaDescriptorTrimFrames = 120;
+        // MOBILEGL_MAGMA_VMA_BLOCK_SIZE_MB: VMA's preferredLargeHeapBlockSize, in MB. VMA's
+        // own 256MB default backs its large-heap blocks with device memory whose unused
+        // remainder is what an iOS jetsam kill counts; 32MB keeps that footprint small on
+        // unified-memory devices. See VulkanRenderer's allocator setup.
+        Uint32 MagmaVmaBlockSizeMB = 32;
         // MOBILEGL_ESPRYT_AVOID_SAMPLER_MIPMAP_MIN_FILTER: avoid mipmap min filters in samplers,
         // resolves certain rendering bugs on ANGLE + llvmpipe.
         Bool EsprytAvoidSamplerMipmapMinFilter = false;
