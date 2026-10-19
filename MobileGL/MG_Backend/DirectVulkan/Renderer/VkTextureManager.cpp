@@ -1025,7 +1025,8 @@ namespace MobileGL::MG_Backend::DirectVulkan {
         const VkImageAspectFlags sampledAspect =
             ResolveSampledImageViewAspectMask(resource->aspect, texture.GetDepthStencilTextureMode());
         perMipSampledView = CreateImageView(resource->image, resource->format, sampledAspect, resource->viewType,
-                                            mipLevel, 1, 0, resource->arrayLayers, &sampledComponents);
+                                            mipLevel, 1, 0, resource->arrayLayers, &sampledComponents,
+                                            VK_IMAGE_USAGE_SAMPLED_BIT);
         if (perMipSampledView == VK_NULL_HANDLE) {
             MGLOG_D("%s: CreateImageView failed for textureId=%d mipLevel=%u", __func__, texture.GetExternalIndex(),
                     mipLevel);
@@ -2807,14 +2808,16 @@ namespace MobileGL::MG_Backend::DirectVulkan {
         const TextureFormatInfo formatInfo = ResolveTextureFormatInfo(texture.GetFormat());
         const VkComponentMapping sampledComponents = ResolveSampledViewComponents(texture, formatInfo);
         resource.fullView = CreateImageView(resource.image, resource.format, resource.aspect, resource.viewType,
-                                            baseMipLevel, levelCount, 0, resource.arrayLayers, &sampledComponents);
+                                            baseMipLevel, levelCount, 0, resource.arrayLayers, &sampledComponents,
+                                            VK_IMAGE_USAGE_SAMPLED_BIT);
         if (resource.fullView == VK_NULL_HANDLE) {
             return false;
         }
         const VkImageAspectFlags sampledAspect =
             ResolveSampledImageViewAspectMask(resource.aspect, texture.GetDepthStencilTextureMode());
         resource.sampledView = CreateImageView(resource.image, resource.format, sampledAspect, resource.viewType,
-                                               baseMipLevel, levelCount, 0, resource.arrayLayers, &sampledComponents);
+                                               baseMipLevel, levelCount, 0, resource.arrayLayers, &sampledComponents,
+                                               VK_IMAGE_USAGE_SAMPLED_BIT);
         if (resource.sampledView == VK_NULL_HANDLE) {
             return false;
         }
@@ -2850,6 +2853,14 @@ namespace MobileGL::MG_Backend::DirectVulkan {
         if (viewUsage != 0) {
             usageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_USAGE_CREATE_INFO;
             usageInfo.usage = viewUsage;
+            viewInfo.pNext = &usageInfo;
+        } else if (layerCount > 1) {
+            // When layerCount > 1 (e.g. Cubemaps or 2D Array textures), inheriting the parent image's
+            // VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT causes MoltenVK on Apple GPUs without layered rendering
+            // (such as A11 Bionic) to reject vkCreateImageView with VK_ERROR_FEATURE_NOT_PRESENT.
+            // Restrict default viewUsage to SAMPLED + TRANSFER unless explicitly specified as an attachment.
+            usageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_USAGE_CREATE_INFO;
+            usageInfo.usage = VK_IMAGE_USAGE_SAMPLED_BIT | VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT;
             viewInfo.pNext = &usageInfo;
         }
 
