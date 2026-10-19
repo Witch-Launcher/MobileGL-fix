@@ -2454,7 +2454,7 @@ namespace MobileGL::MG_Backend::DirectVulkan {
         }
         // Bound the idle pool: a one-off giant upload (initial atlas define)
         // must not pin its staging memory forever.
-        constexpr VkDeviceSize kMaxFreeUploadStagingBytes = 32u * 1024u * 1024u;
+        constexpr VkDeviceSize kMaxFreeUploadStagingBytes = 8u * 1024u * 1024u;
         if (m_allocator == nullptr || m_freeUploadStagingBytes + block.capacity > kMaxFreeUploadStagingBytes) {
             vmaDestroyBuffer(m_allocator, block.buffer, block.allocation);
             return;
@@ -2583,7 +2583,7 @@ namespace MobileGL::MG_Backend::DirectVulkan {
         ReclaimCompletedUploads();
         // Backstop for pathological upload storms: bound in-flight staging
         // memory by blocking on the oldest batch only once the list is deep.
-        constexpr SizeT kMaxPendingTextureUploads = 16;
+        constexpr SizeT kMaxPendingTextureUploads = 8;
         if (m_pendingUploadReclaims.size() > kMaxPendingTextureUploads) {
             VK_VERIFY(vkWaitForFences(m_device, 1, &m_pendingUploadReclaims.front().fence, VK_TRUE, UINT64_MAX),
                       "vkWaitForFences(texture upload backstop)");
