@@ -16,6 +16,7 @@
 
 #include <Config.h>
 #include <algorithm>
+#include <atomic>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -857,6 +858,38 @@ namespace MobileGL::MG_Backend::DirectVulkan {
         return resourcePtr;
     }
 
+    void VkTextureManager::CensusLiveTargets(SizeT& tex2D, SizeT& texCube, SizeT& texArray,
+                                              SizeT& tex3D, SizeT& texOther) const {
+        tex2D = texCube = texArray = tex3D = texOther = 0;
+        for (const auto& [_, weakTex] : m_aliveObjects) {
+            SharedPtr<MG_State::GLState::ITextureObject> tex = weakTex.lock();
+            if (!tex) {
+                continue;
+            }
+            switch (tex->GetTarget()) {
+                case TextureTarget::Texture2D:
+                case TextureTarget::TextureRectangle:
+                    ++tex2D;
+                    break;
+                case TextureTarget::TextureCubeMap:
+                    ++texCube;
+                    break;
+                case TextureTarget::Texture1DArray:
+                case TextureTarget::Texture2DArray:
+                case TextureTarget::TextureCubeMapArray:
+                case TextureTarget::Texture2DMultisampleArray:
+                    ++texArray;
+                    break;
+                case TextureTarget::Texture3D:
+                    ++tex3D;
+                    break;
+                default:
+                    ++texOther;
+                    break;
+            }
+        }
+    }
+
     VkImageView VkTextureManager::GetOrCreateViewAtMipLevel(MG_State::GLState::ITextureObject& texture, Uint32 mipLevel) {
         TextureResource* resource = SyncTextureAndGetDescriptor(texture);
         if (resource == nullptr || resource->image == VK_NULL_HANDLE) {
@@ -982,6 +1015,22 @@ namespace MobileGL::MG_Backend::DirectVulkan {
         if (attachmentView == VK_NULL_HANDLE) {
             MGLOG_D("%s: CreateImageView failed for textureId=%d mipLevel=%u baseArrayLayer=%u layerCount=%u viewType=%d",
                     __func__, texture.GetExternalIndex(), mipLevel, baseArrayLayer, layerCount, static_cast<Int>(viewType));
+            // Diagnostic: attribute layered-attachment failures (e.g. MoltenVK has no
+            // layered rendering) and count them; the entry is erased below so the
+            // next frame retries - this counter shows whether that retry storm is
+            // what the log is full of. First 5 + every 500th are printed.
+            {
+                static std::atomic<Uint64> s_attachViewFailures{0};
+                Uint64 n = ++s_attachViewFailures;
+                if (n <= 5 || (n % 500) == 0) {
+                    std::fprintf(stderr,
+                                 "[MobileGL-MemStats] attachment view FAILED #%llu: textureId=%d mip=%u base=%u "
+                                 "layers=%u viewType=%d format=%d\n",
+                                 (unsigned long long)n, texture.GetExternalIndex(), mipLevel, baseArrayLayer,
+                                 layerCount, static_cast<Int>(viewType), static_cast<Int>(attachmentFormat));
+                    std::fflush(stderr);
+                }
+            }
             resource->attachmentViews.erase(it);
             return VK_NULL_HANDLE;
         }
@@ -2866,6 +2915,23 @@ namespace MobileGL::MG_Backend::DirectVulkan {
 
         VkImageView view = VK_NULL_HANDLE;
         VK_VERIFY(vkCreateImageView(m_device, &viewInfo, nullptr, &view), "vkCreateImageView(texture)");
+        if (view == VK_NULL_HANDLE) {
+            // Diagnostic: attribute EVERY texture-manager view failure (covers
+            // full/sampled/per-mip/attachment/texture-view/snapshot paths in one
+            // place). First 5 + every 500th, to stderr (captured in latestlog).
+            static std::atomic<Uint64> s_texViewFailures{0};
+            Uint64 n = ++s_texViewFailures;
+            if (n <= 5 || (n % 500) == 0) {
+                std::fprintf(stderr,
+                             "[MobileGL-MemStats] texview FAILED #%llu: image=%p format=%d aspect=0x%x viewType=%d "
+                             "mips=[%u,%u) layers=[%u,%u)\n",
+                             (unsigned long long)n, (const void*)image, static_cast<Int>(format),
+                             static_cast<unsigned>(aspect), static_cast<Int>(viewType),
+                             baseMipLevel, baseMipLevel + levelCount, baseArrayLayer,
+                             baseArrayLayer + layerCount);
+                std::fflush(stderr);
+            }
+        }
         return view;
     }
 
