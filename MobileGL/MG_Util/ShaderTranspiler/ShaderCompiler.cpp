@@ -66,6 +66,8 @@
 #include <atomic>
 #include <cctype>
 #include <cstdlib>
+#include <filesystem>
+#include <fstream>
 #include <mutex>
 
 namespace MobileGL {
@@ -285,6 +287,36 @@ namespace MobileGL {
             // One parse attempt. A glslang::TShader cannot be re-parsed, so a retry has to build a
             // fresh one with byte-identical setup - hence a single factored body rather than two
             // copies that could drift apart.
+            // Field-diagnosis aid for crashes inside glslang that a device cannot be
+            // debugged for: with MOBILEGL_DUMP_SHADERS=<dir> in the environment, every
+            // string handed to TShader::parse() is written out once, keyed by stage and a
+            // hash of its contents. A crash during parse or SPIR-V generation then names
+            // its input by the newest file in the directory - which is the only way to
+            // recover the source from an app that dies on device, where the Java-side
+            // log has no access to the preprocessed text. Unset (the default), this is a
+            // single getenv per parse and writes nothing.
+            static void DumpShaderSourceForDiagnosis(GLenum shaderType, const String& source) {
+                static const char* dumpDirectory = std::getenv("MOBILEGL_DUMP_SHADERS");
+                if (dumpDirectory == nullptr || *dumpDirectory == '\0') return;
+
+                // FNV-1a, only ever used here to name the dump file.
+                Uint64 hash = 0xcbf29ce484222325ULL;
+                for (const unsigned char c : source) {
+                    hash ^= c;
+                    hash *= 0x00000100000001b3ULL;
+                }
+
+                const std::filesystem::path path =
+                    std::filesystem::path(dumpDirectory) /
+                    (ConvertGLEnumToString(shaderType) + "_" + std::format("{:016x}", hash) + ".glsl");
+                std::error_code ec;
+                if (std::filesystem::exists(path, ec)) return; // same stage + same bytes: already dumped
+                std::ofstream out(path, std::ios::binary | std::ios::trunc);
+                if (!out) return;
+                out.write(source.data(), static_cast<std::streamsize>(source.size()));
+                MGLOG_I("Dumped shader source to %s", path.string().c_str());
+            }
+
             static Result<SharedPtr<glslang::TShader>> ParseShaderSource(EShLanguage lang, GLenum shaderType,
                                                                          const String& source,
                                                                          Flags<ShaderCompileBits> flags,
@@ -324,6 +356,7 @@ namespace MobileGL {
                 tshader->setAutoMapBindings(true);
                 tshader->setGlobalUniformBlockName(GLOBAL_UBO_NAME);
                 auto resources = BuildTBuiltInResource(env);
+                DumpShaderSourceForDiagnosis(shaderType, source);
                 if (!tshader->parse(&resources, 460, ECoreProfile,
                                     /*forceDefaultVersionAndProfile: */ false,
                                     /*forwardCompatible: */ true, EShMsgDefault)) {
