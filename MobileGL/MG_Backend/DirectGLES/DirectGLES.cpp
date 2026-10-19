@@ -6925,6 +6925,13 @@ namespace MobileGL::MG_Backend::DirectGLES {
 #if MOBILEGL_LOG_ACTIVE_LEVEL <= MOBILEGL_LOG_LEVEL_DEBUG && MOBILEGL_ENABLE_SCOPE_MARKER
         DebugImpl::OpenGLScopeMarker marker(__func__);
 #endif
+        // MetalANGLE is ES 3.0: no compute stage exists. The frontend gates on
+        // SupportsComputeShader, but a missed gate must decline — never crash
+        // on the null entry point. (VulkanANGLE provides real compute.)
+        if (!g_GLESFuncs.glDispatchCompute) {
+            MGLOG_E_ONCE("DispatchCompute declined: no compute support on this ANGLE backend (MetalANGLE ES 3.0?)");
+            return;
+        }
         PrepareForCompute(false);
         g_GLESFuncs.glDispatchCompute(numGroupsX, numGroupsY, numGroupsZ);
     }
@@ -6933,6 +6940,10 @@ namespace MobileGL::MG_Backend::DirectGLES {
 #if MOBILEGL_LOG_ACTIVE_LEVEL <= MOBILEGL_LOG_LEVEL_DEBUG && MOBILEGL_ENABLE_SCOPE_MARKER
         DebugImpl::OpenGLScopeMarker marker(__func__);
 #endif
+        if (!g_GLESFuncs.glDispatchComputeIndirect) {
+            MGLOG_E_ONCE("DispatchComputeIndirect declined: no compute support on this ANGLE backend (MetalANGLE ES 3.0?)");
+            return;
+        }
         PrepareForCompute(true);
         g_GLESFuncs.glDispatchComputeIndirect(indirect);
     }
@@ -6950,6 +6961,16 @@ namespace MobileGL::MG_Backend::DirectGLES {
     }
 
     void MemoryBarrier(GLbitfield barriers) {
+        // No-op when the driver has no barrier entry point (MetalANGLE ES 3.0):
+        // there is no compute/GPU-written storage to order, so skipping is
+        // semantically safe. Still flush for ANGLE renderers when possible to
+        // preserve the original ordering guarantee where it exists.
+        if (!g_GLESFuncs.glMemoryBarrier) {
+            if (g_GLESFuncs.glFlush) {
+                g_GLESFuncs.glFlush();
+            }
+            return;
+        }
         g_GLESFuncs.glMemoryBarrier(LowerAtomicCounterBarrierBits(barriers));
         if (g_GLESCapabilities.IsAngleRenderer) {
             g_GLESFuncs.glFlush();
@@ -6957,6 +6978,16 @@ namespace MobileGL::MG_Backend::DirectGLES {
     }
 
     void MemoryBarrierByRegion(GLbitfield barriers) {
+        if (!g_GLESFuncs.glMemoryBarrierByRegion) {
+            // Fall back to the full barrier when the by-region variant is absent;
+            // if that is absent too, a flush is the safest ordering available.
+            if (g_GLESFuncs.glMemoryBarrier) {
+                g_GLESFuncs.glMemoryBarrier(LowerAtomicCounterBarrierBits(barriers));
+            } else if (g_GLESFuncs.glFlush) {
+                g_GLESFuncs.glFlush();
+            }
+            return;
+        }
         g_GLESFuncs.glMemoryBarrierByRegion(LowerAtomicCounterBarrierBits(barriers));
     }
 
