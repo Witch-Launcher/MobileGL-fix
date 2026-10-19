@@ -796,10 +796,12 @@ void main() {
         EXPECT_EQ(TakeError(), GL_NO_ERROR);
     }
 
-    // Two counters that share a binding AND an offset must fail to link. glslang's own check
-    // lives in fixOffset(), which the Vulkan-relaxed parse never reaches - it folds the
-    // atomic_uint into a storage block and returns from declareVariable() first - so the pair
-    // used to link cleanly and then increment the same four bytes.
+    // Two counters that share a binding AND an offset must fail. glslang's own check lives in
+    // fixOffset(), which the Vulkan-relaxed parse used to skip - it folds the atomic_uint into a
+    // storage block and returns from declareVariable() first - so the pair used to link cleanly
+    // and then increment the same four bytes. The d3c70bb6 glslang pin routes relaxed counters
+    // through the binding's offset cursor, so fixOffset() now raises the overlap itself and the
+    // failure surfaces at compile time; the assertion below accepts either wording.
     TEST_F(ProgramInterfaceTest, OverlappingAtomicCounterOffsetsFailToLink) {
         const char* fs = R"(#version 430
 out vec4 color;
@@ -814,7 +816,10 @@ void main() { color = vec4(float(atomicCounterIncrement(a) + atomicCounterIncrem
         EXPECT_EQ(status, GL_FALSE);
         char log[4096] = "";
         GetProgramInfoLog(p, sizeof(log), nullptr, log);
-        EXPECT_NE(std::string(log).find("overlap"), std::string::npos) << "info log was: " << log;
+        const std::string logText(log);
+        EXPECT_TRUE(logText.find("overlap") != std::string::npos ||
+                    logText.find("sharing the same offset") != std::string::npos)
+            << "info log was: " << log;
         ClearErrors();
 
         // Distinct offsets at one binding, and the same offset at two different bindings, are
