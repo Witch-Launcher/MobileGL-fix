@@ -223,6 +223,11 @@ namespace MobileGL::MG_Config {
         // route for the same write stalls the thread or ghost-copies the whole arena on
         // this class of Mali driver, and the arena stops costing its size again in RAM.
         Bool DisableLargeBufferAdoption = false;
+        // MOBILEGL_LARGE_BUFFER_ADOPT_MB: store size (in MB) at or above which
+        // TryAdoptLargeStorage offers a buffer to the backend for GPU-resident storage,
+        // releasing the CPU shadow. 16MB keeps the historical mesh-arena-sized rule; a
+        // mobile front end with a constrained heap can lower it to adopt more stores.
+        Uint32 LargeBufferAdoptThresholdMB = 16;
         // MOBILEGL_ESPRYT_FORCE_DS_READBACK_EMULATION: make DirectGLES skip the native ES
         // depth/stencil reads and always go through the shader-sampling emulation. Core GL
         // ES has no depth or stencil readback, but some drivers accept it anyway (Mesa does,

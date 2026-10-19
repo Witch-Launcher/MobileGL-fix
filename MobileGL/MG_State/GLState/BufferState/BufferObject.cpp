@@ -178,7 +178,8 @@ namespace MobileGL::MG_State::GLState {
     // Only attempted for stores the size of mesh arenas: small buffers keep the
     // shadow model whose draw-time flush already prices them correctly.
     void BufferObject::TryAdoptLargeStorage() {
-        constexpr SizeT kLargeBufferAdoptBytes = 16u * 1024u * 1024u;
+        const SizeT kLargeBufferAdoptBytes =
+            static_cast<SizeT>(MG_Config::Features.LargeBufferAdoptThresholdMB) * 1024u * 1024u;
         if (MG_Config::Features.DisableLargeBufferAdoption) return;
         if (m_size < kLargeBufferAdoptBytes) return;
         if (m_resource.IsGpuResident()) return;
