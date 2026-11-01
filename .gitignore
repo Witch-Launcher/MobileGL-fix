@@ -28,3 +28,5 @@ tools/trace_replay/work/
 __pycache__/
 *.py[cod]
 /.gradle
+.DS_Store
+/build-macos/
